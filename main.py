@@ -27,20 +27,21 @@ parser.add_argument('--seed', type=int, default=123, help='Random Seeds')
 parser.add_argument('--gpus', default=1, type=int, help='number of gpu')
 parser.add_argument('--data_dir', type=str, default='./Dataset')
 parser.add_argument('--data_augmentation', type=bool, default=True)
-parser.add_argument('--hr_train_dataset', type=str, default='train/')
+parser.add_argument('--hr_train_dataset', type=str, default='training_dataset/')
 parser.add_argument('--model_type', type=str, default='SR')
 parser.add_argument('--residual', type=bool, default=True)
 parser.add_argument('--patch_size', type=int, default=40, help='Cropped HR image Size')
-parser.add_argument('--pretrained_sr', default='MIX2K_LR_aug_x4dl10DBPNITERtpami_epoch_399.pth', help='sr pretrained base model')
-parser.add_argument('--pretrained', type=bool, default=False)
+#parser.add_argument('--pretrained_sr', default='MIX2K_LR_aug_x4dl10DBPNITERtpami_epoch_399.pth', help='sr pretrained base model')
+#parser.add_argument('--pretrained', type=bool, default=False)
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--prefix', default='SR', help='Location to save checkpoint models')
 
-opt = parser.parse_args()
-gpus_list = range(opt.gpus)
-hostname = str(socket.gethostname())
+option = parser.parse_args()
+gpus = range(option.gpus)
+host = str(socket.gethostname())
 cudnn.benchmark = True
-print(opt)
+
+print(option)
 
 def train(epoch):
     epoch_loss = 0
@@ -50,15 +51,15 @@ def train(epoch):
         input, target, bicubic = Variable(batch[0]), Variable(batch[1]), Variable(batch[2])
         
         if cuda:
-            input = input.cuda(gpus_list[0])
-            target = target.cuda(gpus_list[0])
-            bicubic = bicubic.cuda(gpus_list[0])
+            input = input.cuda(gpus[0])
+            target = target.cuda(gpus[0])
+            bicubic = bicubic.cuda(gpus[0])
 
         optimizer.zero_grad()
         t0 = time.time()
         prediction = model(input)
 
-        if opt.residual:
+        if option.residual:
             prediction = prediction + bicubic
 
         loss = criterion(prediction, target)
@@ -73,80 +74,81 @@ def train(epoch):
 
 
 def test():
-    avg_psnr = 0
+    avarage_psnr = 0
     for batch in testing_data_loader:
         input, target = Variable(batch[0]), Variable(batch[1])
         
         if cuda:
-            input = input.cuda(gpus_list[0])
-            target = target.cuda(gpus_list[0])
+            input = input.cuda(gpus[0])
+            target = target.cuda(gpus[0])
 
         prediction = model(input)
         mse = criterion(prediction, target)
         psnr = 10 * log10(1 / mse.data[0])
-        avg_psnr += psnr
-    print("===> Avg. PSNR: {:.4f} dB".format(avg_psnr / len(testing_data_loader)))
+        avarage_psnr = avg_psnr + psnr
+
+    print("===> Avg. PSNR: {:.4f} dB".format(avarage_psnr / len(testing_data_loader)))
 
 
 def print_network(net):
     num_params = 0
 
     for param in net.parameters():
-        num_params += param.numel()
+        num_params = num_params + param.numel()
         
     print(net)
     print('Total number of parameters: %d' % num_params)
 
 
 def checkpoint(epoch):
-    model_out_path = opt.save_folder+hostname+"_"+opt.model_type+opt.prefix+"_epoch_{}.pth".format(epoch)
-    print("Save directory is {}".format(opt.save_folder))
-    if not os.path.exists(opt.save_folder):
-        os.makedirs(opt.save_folder)
+    model_out_path = option.save_folder+host+"_"+option.model_type+option.prefix+"_epoch_{}.pth".format(epoch)
+    print("Saving directory is {}".format(option.save_folder))
+    if not os.path.exists(option.save_folder):
+        os.makedirs(option.save_folder)
     torch.save(model.state_dict(), model_out_path)
     print("Checkpoint saved to {} success!!!!".format(model_out_path))
 
-cuda = opt.gpu_mode
+cuda = option.gpu_mode
 if cuda and not torch.cuda.is_available():
     raise Exception("No GPU found, please run without --cuda")
 
-torch.manual_seed(opt.seed)
+torch.manual_seed(option.seed)
 if cuda:
-    torch.cuda.manual_seed(opt.seed)
+    torch.cuda.manual_seed(option.seed)
 
 print('===> Loading datasets')
-train_set = get_training_set(opt.data_dir, opt.hr_train_dataset, opt.upscale_factor, opt.patch_size, opt.data_augmentation)
-training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
+train_set = get_training_set(option.data_dir, option.hr_train_dataset, option.upscale_factor, option.patch_size, option.data_augmentation)
+training_data_loader = DataLoader(dataset=train_set, num_workers=option.threads, batch_size=option.batchSize, shuffle=True)
 
-print('===> Building model ', opt.model_type)
+print('===> Building model ', option.model_type)
 
-model = SR(num_channels=3, base_filter=64,  feat=256, num_stages=7, scale_factor=opt.upscale_factor)
+model = SR(num_channels=3, base_filter=64,  feat=256, num_stages=7, scale_factor=option.upscale_factor)
     
-model = torch.nn.DataParallel(model, device_ids=gpus_list)
+model = torch.nn.DataParallel(model, device_ids=gpus)
 criterion = nn.L1Loss()
 
 print('---------- Networks architecture -------------')
 print_network(model)
 print('----------------------------------------------')
 
-if opt.pretrained:
-    model_name = os.path.join(opt.save_folder + opt.pretrained_sr)
-    if os.path.exists(model_name):
-        model.load_state_dict(torch.load(model_name, map_location=lambda storage, loc: storage))
-        print('Pre-trained SR model is loaded.')
+# if option.pretrained:
+#     model_name = os.path.join(option.save_folder + option.pretrained_sr)
+#     if os.path.exists(model_name):
+#         model.load_state_dict(torch.load(model_name, map_location=lambda storage, loc: storage))
+#         print('Pre-trained SR model is loaded.')
 
 if cuda:
-    model = model.cuda(gpus_list[0])
-    criterion = criterion.cuda(gpus_list[0])
+    model = model.cuda(gpus[0])
+    criterion = criterion.cuda(gpus[0])
 
-optimizer = optim.Adam(model.parameters(), lr=opt.lr, betas=(0.9, 0.999), eps=1e-8)
+optimizer = optim.Adam(model.parameters(), lr=option.lr, betas=(0.9, 0.999), eps=1e-8)
 
-for epoch in range(opt.start_iter, opt.nEpochs + 1):
+for epoch in range(option.start_iter, option.nEpochs + 1):
     train(epoch)
-    if (epoch+1) % (opt.nEpochs/2) == 0:
+    if (epoch+1) % (option.nEpochs/2) == 0:
         for param_group in optimizer.param_groups:
             param_group['lr'] /= 10.0
         print('Learning rate decay: lr={}'.format(optimizer.param_groups[0]['lr']))
             
-    if epoch % (opt.snapshots) == 0:
+    if epoch % (option.snapshots) == 0:
         checkpoint(epoch)
