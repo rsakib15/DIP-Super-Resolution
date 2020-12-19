@@ -18,6 +18,7 @@ matplotlib==3.3.3
 msgpack==0.6.2
 networkx==2.5
 numpy==1.19.4
+opencv-python==4.4.0.46
 packaging==20.3
 pep517==0.8.2
 Pillow==8.0.1
